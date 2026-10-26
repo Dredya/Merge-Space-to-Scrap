@@ -8,6 +8,7 @@ const UiKit = preload("res://scripts/ui/ui_kit.gd")
 var _music_slider: HSlider
 var _sfx_slider: HSlider
 var _haptics_toggle: CheckButton
+var _auto_deliver_toggle_ref: CheckButton
 var _version_label: Label
 var _reset_dialog: ConfirmationDialog
 
@@ -37,7 +38,7 @@ func _build() -> void:
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 
-	var panel := UiKit.panel(18)
+	var panel := UiKit.card(18, UiKit.COLOR_BORDER_HI)
 	panel.custom_minimum_size = Vector2(600, 0)
 	center.add_child(panel)
 
@@ -68,9 +69,19 @@ func _build() -> void:
 
 	_haptics_toggle = CheckButton.new()
 	_haptics_toggle.text = "Haptic feedback"
+	_haptics_toggle.custom_minimum_size = Vector2(0, 44)
 	_haptics_toggle.add_theme_font_size_override("font_size", 15)
 	_haptics_toggle.toggled.connect(func(value: bool) -> void: GameState.set_haptics_enabled(value))
 	body.add_child(_haptics_toggle)
+
+	var auto_deliver_toggle := CheckButton.new()
+	auto_deliver_toggle.text = "Auto-deliver workshop orders"
+	auto_deliver_toggle.custom_minimum_size = Vector2(0, 44)
+	auto_deliver_toggle.add_theme_font_size_override("font_size", 15)
+	auto_deliver_toggle.toggled.connect(func(value: bool) -> void: GameState.set_auto_deliver(value))
+	body.add_child(auto_deliver_toggle)
+	# store reference via meta? Use a var by changing class. We'll instead sync through settings_changed by re-reading. Need reference; add to a var.
+	_auto_deliver_toggle_ref = auto_deliver_toggle
 
 	body.add_child(UiKit.label(
 		"Save data lives in the user:// folder and is written automatically.",
@@ -119,6 +130,8 @@ func _sync() -> void:
 	_music_slider.set_value_no_signal(float(GameState.settings.get("music", 0.55)))
 	_sfx_slider.set_value_no_signal(float(GameState.settings.get("sfx", 0.8)))
 	_haptics_toggle.set_pressed_no_signal(bool(GameState.settings.get("haptics", true)))
+	if _auto_deliver_toggle_ref != null:
+		_auto_deliver_toggle_ref.set_pressed_no_signal(bool(GameState.settings.get("auto_deliver", false)))
 	var version: String = str(ProjectSettings.get_setting("application/config/version", "1.0.0"))
 	_version_label.text = "Scrap to Space v%s - offline build" % version
 

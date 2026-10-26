@@ -46,8 +46,8 @@ func _build() -> void:
 	header.add_child(_summary)
 	column.add_child(header)
 
-	var ship_panel := UiKit.panel(6, Color("#0b1330"))
-	ship_panel.custom_minimum_size = Vector2(0, 250)
+	var ship_panel := UiKit.card(6, UiKit.COLOR_ACCENT_DIM)
+	ship_panel.custom_minimum_size = Vector2(0, 270)
 	_ship_view = ShipViewScript.new()
 	ship_panel.add_child(_ship_view)
 	column.add_child(ship_panel)
@@ -71,7 +71,7 @@ func _build() -> void:
 
 
 func _build_part_card(definition: Dictionary) -> Control:
-	var card := UiKit.panel(10)
+	var card := UiKit.card(10, UiKit.COLOR_BORDER)
 	var body := UiKit.vbox(3)
 	card.add_child(body)
 

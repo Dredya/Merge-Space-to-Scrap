@@ -199,7 +199,7 @@ func _check_upgrades_screen() -> void:
 	GameState.credits = 5000
 	upgrades._on_expand_pressed()
 	await get_tree().process_frame
-	_check_eq(GameState.board_size(), 35, "upgrades screen expands the board")
+	_check_eq(GameState.board_size(), 15, "upgrades screen expands the board")
 
 	var widget: Dictionary = upgrades._generator_widgets[0]
 	_check(str(widget["level"].text).contains("2"), "generator card shows the new level")

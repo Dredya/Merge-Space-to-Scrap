@@ -331,6 +331,8 @@ func _rebuild() -> void:
 	if _slots.size() != GameState.board_size():
 		_build_slots()
 
+	var selected_item_id: Variant = GameState.selected_item()
+
 	for index in _slots.size():
 		var existing: Variant = _items[index]
 		if existing != null and is_instance_valid(existing):
@@ -355,6 +357,8 @@ func _rebuild() -> void:
 		item.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		item.setup(str(cell))
 		item.set_selected(GameState.selected_index == index)
+		var is_match: bool = selected_item_id != null and str(cell) == str(selected_item_id) and GameState.selected_index != index
+		item.set_match_glow(is_match)
 		_items[index] = item
 
 		if _pop_index == index:

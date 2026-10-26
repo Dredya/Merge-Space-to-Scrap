@@ -13,11 +13,13 @@ const ExpeditionRules = preload("res://scripts/logic/expedition_rules.gd")
 signal credits_changed(credits: int)
 signal board_changed
 signal production_changed
+signal selection_changed
 signal generators_changed
 signal orders_changed
 signal ship_changed
 signal planets_changed
 signal expedition_changed
+signal ad_changed
 signal tutorial_changed
 signal settings_changed
 signal notice(text: String, kind: String)
@@ -33,7 +35,8 @@ var orders: Array = []
 var parts: Dictionary = {}
 var unlocked_planets: Array = []
 var expedition: Dictionary = {}
-var settings: Dictionary = {"music": 0.55, "sfx": 0.8, "haptics": true}
+var next_expedition_unix: float = 0.0
+var settings: Dictionary = {"music": 0.55, "sfx": 0.8, "haptics": true, "auto_deliver": false}
 var tutorial: Dictionary = {"step": 0, "done": false}
 var stats: Dictionary = {
 	"merges": 0,
@@ -44,12 +47,17 @@ var stats: Dictionary = {
 	"best_tier": 1,
 }
 var boost_until: float = 0.0
+var next_rewarded_ad_unix: float = 0.0
+var _ad_paused_remaining: float = -1.0
 var selected_index: int = -1
 
 var _rng := RandomNumberGenerator.new()
 var _save_cooldown: float = 0.0
 var _suppress_save: bool = false
 var _pending_notice: String = ""
+var _auto_deliver_cooldown: float = 0.0
+var _scrap_spawn_timer: float = 10.0
+var _scrap_spawn_interval: float = 10.0
 
 
 func _ready() -> void:
@@ -59,6 +67,8 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	_auto_collect()
+	_tick_scrap_spawn(delta)
 	if _tick_production(delta):
 		production_changed.emit()
 
@@ -67,12 +77,27 @@ func _process(delta: float) -> void:
 		if _save_cooldown <= 0.0:
 			save_now()
 
+	if bool(settings.get("auto_deliver", false)) and not _suppress_save:
+		_auto_deliver_cooldown -= delta
+		if _auto_deliver_cooldown <= 0.0:
+			_auto_deliver_cooldown = 0.5
+			auto_deliver_ready_orders()
+
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED \
 			or what == NOTIFICATION_APPLICATION_FOCUS_OUT \
 			or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		if next_rewarded_ad_unix > 0.0:
+			_ad_paused_remaining = maxf(0.0, next_rewarded_ad_unix - Time.get_unix_time_from_system())
 		save_now()
+	elif what == NOTIFICATION_APPLICATION_RESUMED \
+			or what == NOTIFICATION_APPLICATION_FOCUS_IN \
+			or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
+		if _ad_paused_remaining >= 0.0:
+			next_rewarded_ad_unix = Time.get_unix_time_from_system() + _ad_paused_remaining
+			_ad_paused_remaining = -1.0
+			ad_changed.emit()
 
 
 # --- Lifecycle --------------------------------------------------------------
@@ -100,7 +125,10 @@ func new_game() -> void:
 	expansions_bought = 0
 	selected_index = -1
 	boost_until = 0.0
+	_scrap_spawn_timer = _scrap_spawn_interval
 	expedition = {}
+	next_expedition_unix = 0.0
+	next_rewarded_ad_unix = 0.0
 	orders = []
 
 	generators = {}
@@ -167,10 +195,12 @@ func to_save_dict() -> Dictionary:
 		"parts": parts.duplicate(true),
 		"unlocked_planets": unlocked_planets.duplicate(),
 		"expedition": expedition.duplicate(true),
+		"next_expedition_unix": next_expedition_unix,
 		"settings": settings.duplicate(true),
 		"tutorial": tutorial.duplicate(true),
 		"stats": stats.duplicate(true),
 		"boost_until": boost_until,
+		"next_rewarded_ad_unix": next_rewarded_ad_unix,
 		"saved_at": Time.get_unix_time_from_system(),
 	}
 
@@ -248,6 +278,7 @@ func apply_save_dict(data: Dictionary) -> void:
 		"music": clampf(float(saved_settings.get("music", 0.55)), 0.0, 1.0),
 		"sfx": clampf(float(saved_settings.get("sfx", 0.8)), 0.0, 1.0),
 		"haptics": bool(saved_settings.get("haptics", true)),
+		"auto_deliver": bool(saved_settings.get("auto_deliver", false)),
 	}
 
 	expedition = {}
@@ -268,6 +299,8 @@ func apply_save_dict(data: Dictionary) -> void:
 		0.0,
 		Time.get_unix_time_from_system() + Catalog.PRODUCTION_BOOST_SECONDS
 	)
+	next_rewarded_ad_unix = maxf(0.0, float(data.get("next_rewarded_ad_unix", 0.0)))
+	next_expedition_unix = maxf(0.0, float(data.get("next_expedition_unix", 0.0)))
 
 	unlocked_planets = compute_unlocked_planets()
 
@@ -321,6 +354,20 @@ func boost_seconds_remaining() -> float:
 	return maxf(0.0, boost_until - Time.get_unix_time_from_system())
 
 
+func ad_available() -> bool:
+	return ad_seconds_remaining() <= 0.0
+
+
+func ad_seconds_remaining() -> float:
+	return maxf(0.0, next_rewarded_ad_unix - Time.get_unix_time_from_system())
+
+
+func consume_ad_cooldown() -> void:
+	next_rewarded_ad_unix = Time.get_unix_time_from_system() + 300.0
+	ad_changed.emit()
+	queue_save()
+
+
 func apply_production_boost(seconds: float = Catalog.PRODUCTION_BOOST_SECONDS) -> void:
 	boost_until = maxf(boost_until, Time.get_unix_time_from_system()) + seconds
 	production_changed.emit()
@@ -348,6 +395,67 @@ func get_production_snapshot() -> Array:
 			"unlocked": level > 0,
 		})
 	return snapshot
+
+
+func _tick_scrap_spawn(delta: float) -> void:
+	var saver := _save_manager()
+	if saver == null or not saver.autosave_enabled:
+		return
+	if free_slot_count() <= 0:
+		_scrap_spawn_timer = _scrap_spawn_interval
+		return
+	_scrap_spawn_timer -= delta
+	if _scrap_spawn_timer <= 0.0:
+		_spawn_random_scrap()
+		_scrap_spawn_timer = _scrap_spawn_interval
+
+
+func _spawn_random_scrap() -> void:
+	var families: Array = ["circuit"]
+	if int((generators.get("sorter", {}) as Dictionary).get("level", 0)) >= 1:
+		families.append("alloy")
+	if int((generators.get("arm", {}) as Dictionary).get("level", 0)) >= 1:
+		families.append("quantum")
+	var family_id: String = str(families[_rng.randi_range(0, families.size() - 1)])
+	var tier_ids: Array = Catalog.tier_ids(family_id)
+	if tier_ids.is_empty():
+		return
+	var item_id: String = str(tier_ids[0])
+	if _spawn_item(item_id):
+		board_changed.emit()
+		queue_save()
+
+
+func scrap_spawn_seconds_remaining() -> float:
+	return maxf(0.0, _scrap_spawn_timer)
+
+
+func _auto_collect() -> void:
+	var saver := _save_manager()
+	if saver == null or not saver.autosave_enabled:
+		return
+	var collected: int = 0
+	for definition in Catalog.GENERATOR_DEFS:
+		var generator_id: String = str(definition["id"])
+		var state: Dictionary = generators.get(generator_id, {})
+		if state.is_empty():
+			continue
+		var pending: int = int(state.get("pending", 0))
+		if pending <= 0:
+			continue
+		var item_id: String = str(definition["item"])
+		var spawned: int = 0
+		for _i in pending:
+			if free_slot_count() <= 0:
+				break
+			if _spawn_item(item_id):
+				spawned += 1
+		state["pending"] = pending - spawned
+		collected += spawned
+	if collected > 0:
+		board_changed.emit()
+		production_changed.emit()
+		queue_save()
 
 
 func collect_production() -> Dictionary:
@@ -391,6 +499,9 @@ func _tick_production(delta: float) -> bool:
 			continue
 		var level: int = int(state.get("level", 0))
 		if level <= 0:
+			continue
+		if free_slot_count() <= 0:
+			state["progress"] = 0.0
 			continue
 		var interval: float = EconomyRules.generator_interval(definition, level)
 		var capacity: int = EconomyRules.generator_capacity(definition, level)
@@ -640,6 +751,12 @@ func upgrade_generator(generator_id: String) -> Dictionary:
 	if not EconomyRules.generator_requirements_met(definition, generator_levels()):
 		return {"ok": false, "message": "Requires %s." % EconomyRules.generator_requirement_text(definition)}
 
+	var ship_requires: Dictionary = definition.get("ship_requires", {})
+	for part_id in ship_requires:
+		if part_level(str(part_id)) < int(ship_requires[part_id]):
+			var part_name: String = str(Catalog.ship_part_def(str(part_id)).get("name", part_id))
+			return {"ok": false, "message": "Requires %s Lv %d." % [part_name, int(ship_requires[part_id])]}
+
 	var cost: int = EconomyRules.generator_upgrade_cost(definition, level)
 	if credits < cost:
 		return {"ok": false, "message": "Need %d more credits." % (cost - credits)}
@@ -693,10 +810,37 @@ func _generate_order() -> Dictionary:
 	if tier_ids.is_empty():
 		return {}
 
-	var tier: int = _rng.randi_range(1, mini(3, tier_ids.size()))
-	var item_id: String = str(tier_ids[tier - 1])
-	var quantity: int = _rng.randi_range(1, 2)
-	var reward: int = int(round(float(Catalog.sell_value(item_id)) * float(quantity) * 1.9))
+	# Pick an order tier. Higher tiers need more progress to be fair.
+	var order_tier: int = _rng.randi_range(1, 3)
+	var max_tier_index: int = tier_ids.size()
+	var min_item_tier: int = 1
+	var max_item_tier: int = mini(2, max_tier_index)
+	if order_tier == 2:
+		min_item_tier = mini(2, max_tier_index)
+		max_item_tier = mini(3, max_tier_index)
+	elif order_tier == 3:
+		min_item_tier = mini(3, max_tier_index)
+		max_item_tier = max_tier_index
+	if min_item_tier > max_item_tier:
+		min_item_tier = 1
+		max_item_tier = mini(2, max_tier_index)
+
+	var item_tier: int = _rng.randi_range(min_item_tier, max_item_tier)
+	var item_id: String = str(tier_ids[item_tier - 1])
+
+	var quantity: int = 1
+	if order_tier >= 2:
+		quantity = _rng.randi_range(1, 2)
+	if order_tier >= 3:
+		quantity = 2
+
+	var reward_mult: float = 1.0
+	if order_tier == 2:
+		reward_mult = 1.2
+	elif order_tier == 3:
+		reward_mult = 1.5
+
+	var reward: int = int(round(float(Catalog.sell_value(item_id)) * float(quantity) * 1.9 * reward_mult))
 	reward = maxi(int(round(float(reward) / 5.0)) * 5, 5)
 
 	return {
@@ -704,6 +848,7 @@ func _generate_order() -> Dictionary:
 		"item_id": item_id,
 		"qty": quantity,
 		"reward": reward,
+		"tier": order_tier,
 	}
 
 
@@ -716,6 +861,7 @@ func _sanitize_order(raw: Dictionary) -> Dictionary:
 		"item_id": item_id,
 		"qty": clampi(int(raw.get("qty", 1)), 1, 5),
 		"reward": maxi(int(raw.get("reward", 5)), 5),
+		"tier": clampi(int(raw.get("tier", 1)), 1, 3),
 	}
 
 
@@ -749,6 +895,33 @@ func deliver_order(index: int) -> Dictionary:
 	orders_changed.emit()
 	queue_save()
 	return {"ok": true, "reward": reward}
+
+
+func auto_deliver_ready_orders() -> Dictionary:
+	if not bool(settings.get("auto_deliver", false)):
+		return {"delivered": 0, "credits": 0}
+	var delivered: int = 0
+	var total_credits: int = 0
+	var changed: bool = true
+	var guard: int = 0
+	while changed and guard < (Catalog.ORDER_SLOTS * 4 + 4):
+		changed = false
+		guard += 1
+		for index in orders.size():
+			var order: Dictionary = orders[index] if index < orders.size() else {}
+			if order.is_empty():
+				continue
+			if not can_deliver_order(order):
+				continue
+			var result: Dictionary = deliver_order(index)
+			if bool(result.get("ok", false)):
+				delivered += 1
+				total_credits += int(result.get("reward", 0))
+				changed = true
+				break
+	if delivered > 0:
+		notice.emit("Auto-delivered %d order(s): +%d cr." % [delivered, total_credits], "good")
+	return {"delivered": delivered, "credits": total_credits}
 
 
 # --- Spaceship --------------------------------------------------------------
@@ -843,6 +1016,9 @@ func can_travel(planet_id: String) -> Dictionary:
 		return {"ok": false, "message": "Unknown destination."}
 	if not expedition.is_empty():
 		return {"ok": false, "message": "Your ship is already away."}
+	if Time.get_unix_time_from_system() < next_expedition_unix:
+		var remaining: float = next_expedition_unix - Time.get_unix_time_from_system()
+		return {"ok": false, "message": "Ship on cooldown: %d:%02d remaining." % [int(remaining) / 60, int(remaining) % 60]}
 	var status: Dictionary = ExpeditionRules.requirements_status(planet, parts)
 	if not bool(status["ok"]):
 		return {"ok": false, "message": "Ship requirements not met.", "missing": status["missing"]}
@@ -887,6 +1063,7 @@ func claim_expedition() -> Dictionary:
 	var delivery: Dictionary = add_items(items)
 	stats["expeditions"] = int(stats["expeditions"]) + 1
 	expedition = {}
+	next_expedition_unix = Time.get_unix_time_from_system() + 600.0
 	production_changed.emit()
 	expedition_changed.emit()
 	queue_save()
@@ -993,6 +1170,12 @@ func set_sfx_volume(value: float) -> void:
 func set_haptics_enabled(value: bool) -> void:
 	settings["haptics"] = value
 	_apply_audio_settings()
+	settings_changed.emit()
+	queue_save()
+
+
+func set_auto_deliver(value: bool) -> void:
+	settings["auto_deliver"] = value
 	settings_changed.emit()
 	queue_save()
 

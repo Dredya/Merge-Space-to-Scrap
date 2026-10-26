@@ -12,14 +12,14 @@ const SAVE_VERSION := 1
 # --- Economy / board tuning -------------------------------------------------
 const STARTING_CREDITS := 100
 const BOARD_COLUMNS := 5
-const BOARD_START_ROWS := 6
+const BOARD_START_ROWS := 2
 const MAX_GENERATOR_LEVEL := 12
 const PART_MAX_LEVEL := 5
 const ORDER_SLOTS := 3
 const OFFLINE_CAP_SECONDS := 7200.0  # 2 hours of offline production
 const PRODUCTION_BOOST_SECONDS := 300.0
 const PRODUCTION_BOOST_MULTIPLIER := 2.0
-const MAX_BOARD_ROWS := 8
+const MAX_BOARD_ROWS := 10
 
 # Rarity colours by tier (index 0 == tier 1).
 const RARITY_COLORS := [
@@ -31,6 +31,10 @@ const RARITY_COLORS := [
 	Color("#ff7a9c"),
 	Color("#43e8ff"),
 	Color("#ffffff"),
+	Color("#ff9ad5"),
+	Color("#ffd1a9"),
+	Color("#b6fffa"),
+	Color("#e8ffe8"),
 ]
 
 # --- Merge chains -----------------------------------------------------------
@@ -52,6 +56,10 @@ const FAMILY_DEFS := {
 			["navigation_computer", "Navigation Computer"],
 			["quantum_core", "Quantum Core"],
 			["warp_drive", "Warp Drive Component"],
+			["quantum_array", "Quantum Array"],
+			["neural_lattice", "Neural Lattice"],
+			["stellar_core", "Stellar Core"],
+			["galaxy_engine", "Galaxy Engine"],
 		],
 	},
 	"alloy": {
@@ -129,12 +137,33 @@ const GENERATOR_DEFS := [
 		"requires": {"sorter": 3},
 		"blurb": "Reaches into the wreck field for unstable quantum shards.",
 	},
+	{
+		"id": "foundry",
+		"name": "Circuit Foundry",
+		"short": "Foundry",
+		"item": "quantum_array",
+		"base_cost": 5000,
+		"cost_growth": 1.75,
+		"base_interval": 45.0,
+		"interval_scale": 0.93,
+		"capacity_base": 2,
+		"capacity_per_level": 1,
+		"requires": {"arm": 3},
+		"ship_requires": {"navigation": 3},
+		"blurb": "Prints advanced circuits directly from ship-grade schematics.",
+	},
 ]
 
 # Extra rows purchasable for the merge board, in order.
 const BOARD_EXPANSIONS := [
-	{"cost": 400, "rows": 7},
-	{"cost": 1500, "rows": 8},
+	{"cost": 150, "rows": 3},
+	{"cost": 300, "rows": 4},
+	{"cost": 600, "rows": 5},
+	{"cost": 1000, "rows": 6},
+	{"cost": 1500, "rows": 7},
+	{"cost": 2200, "rows": 8},
+	{"cost": 3000, "rows": 9},
+	{"cost": 4000, "rows": 10},
 ]
 
 # --- Spaceship --------------------------------------------------------------

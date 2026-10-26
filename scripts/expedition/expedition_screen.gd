@@ -40,6 +40,7 @@ func _process(delta: float) -> void:
 		return
 	_ui_timer = 0.0
 	_refresh_active()
+	_refresh_buttons()
 
 
 func _build() -> void:
@@ -79,7 +80,7 @@ func _build() -> void:
 
 
 func _build_active_panel(column: VBoxContainer) -> void:
-	_active_panel = UiKit.panel(9, Color("#14224a"))
+	_active_panel = UiKit.card(9, UiKit.COLOR_ACCENT_DIM)
 	var body := UiKit.vbox(3)
 	_active_panel.add_child(body)
 
@@ -98,7 +99,7 @@ func _build_active_panel(column: VBoxContainer) -> void:
 
 func _build_planet_card(definition: Dictionary) -> Control:
 	var accent: Color = definition.get("accent", UiKit.COLOR_ACCENT)
-	var card := UiKit.panel(10)
+	var card := UiKit.card(10, UiKit.COLOR_BORDER)
 	var body := UiKit.vbox(4)
 	card.add_child(body)
 
@@ -153,7 +154,7 @@ func _build_result_overlay() -> void:
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_result_overlay.add_child(center)
 
-	var panel := UiKit.panel(16)
+	var panel := UiKit.card(16, UiKit.COLOR_ACCENT)
 	panel.custom_minimum_size = Vector2(560, 0)
 	center.add_child(panel)
 
@@ -226,6 +227,10 @@ func _refresh_buttons() -> void:
 		elif not GameState.expedition.is_empty():
 			button.disabled = true
 			button.text = "SHIP AWAY"
+		elif Time.get_unix_time_from_system() < GameState.next_expedition_unix:
+			button.disabled = true
+			var remaining: float = GameState.next_expedition_unix - Time.get_unix_time_from_system()
+			button.text = "COOLDOWN %d:%02d" % [int(remaining) / 60, int(remaining) % 60]
 		else:
 			button.disabled = false
 			button.text = "DEPART"
@@ -252,8 +257,12 @@ func _on_claim_pressed() -> void:
 	AudioManager.play_with_haptic("arrive", 40)
 	_result_credits = int(result.get("credits", 0))
 	_result_ad_used = false
-	_result_ad_button.disabled = _result_credits <= 0
-	_result_ad_button.text = "WATCH SIMULATED AD (+%s)" % UiKit.credits(int(round(float(_result_credits) * 0.5)))
+	if _result_credits <= 0:
+		_result_ad_button.disabled = true
+		_result_ad_button.text = "NO BONUS"
+	else:
+		_result_ad_button.disabled = false
+		_result_ad_button.text = "DOUBLE EARNINGS (+%s)" % UiKit.credits(_result_credits)
 
 	var lines: Array[String] = []
 	lines.append("%s hauled in %s." % [str(result.get("planet_name", "Ship")), UiKit.credits(_result_credits)])
@@ -277,15 +286,15 @@ func _on_result_ad_pressed() -> void:
 	_result_ad_button.text = "PLAYING..."
 	var granted: bool = await Monetization.watch_rewarded_ad("expedition_bonus")
 	if granted and not _result_ad_used:
-		var bonus: int = int(round(float(_result_credits) * 0.5))
+		var bonus: int = _result_credits
 		GameState.grant_expedition_bonus(bonus)
 		_result_ad_used = true
 		_result_body.text += "\nBonus salvage sold: +%s" % UiKit.credits(bonus)
-		_result_ad_button.text = "BONUS GRANTED"
+		_result_ad_button.text = "DOUBLED"
 		AudioManager.play("buy")
 	elif not granted:
 		_result_ad_button.disabled = false
-		_result_ad_button.text = "WATCH SIMULATED AD (+%s)" % UiKit.credits(int(round(float(_result_credits) * 0.5)))
+		_result_ad_button.text = "DOUBLE EARNINGS (+%s)" % UiKit.credits(_result_credits)
 		GameState.push_notice("No reward was granted.", "warn")
 
 

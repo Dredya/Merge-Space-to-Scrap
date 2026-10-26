@@ -7,11 +7,12 @@ extends Control
 ## while a press is active would otherwise never receive the release.
 
 const Catalog = preload("res://scripts/data/game_catalog.gd")
+const UiKit = preload("res://scripts/ui/ui_kit.gd")
 
 var item_id: String = ""
 var selected: bool = false
+var match_glow: bool = false
 
-var _name_label: Label
 var _background := StyleBoxFlat.new()
 
 
@@ -21,39 +22,21 @@ func _ready() -> void:
 	clip_contents = true
 	_background.set_corner_radius_all(10)
 
-	_name_label = Label.new()
-	_name_label.add_theme_font_size_override("font_size", 11)
-	_name_label.add_theme_color_override("font_color", Color("#cfd9f5"))
-	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_name_label.clip_text = true
-	_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_name_label.anchor_left = 0.0
-	_name_label.anchor_right = 1.0
-	_name_label.anchor_top = 0.6
-	_name_label.anchor_bottom = 1.0
-	_name_label.offset_left = 3.0
-	_name_label.offset_right = -3.0
-	_name_label.offset_top = 0.0
-	_name_label.offset_bottom = -4.0
-	add_child(_name_label)
-
 	resized.connect(queue_redraw)
 
 
 func setup(new_item_id: String) -> void:
 	item_id = new_item_id
-	if _name_label == null:
-		_name_label = get_child(0) as Label
-	if _name_label != null:
-		var definition: Dictionary = Catalog.item(new_item_id)
-		_name_label.text = str(definition.get("name", ""))
 	queue_redraw()
 
 
 func set_selected(value: bool) -> void:
 	selected = value
+	queue_redraw()
+
+
+func set_match_glow(value: bool) -> void:
+	match_glow = value
 	queue_redraw()
 
 
@@ -73,10 +56,25 @@ func _draw() -> void:
 		return
 
 	var tint: Color = definition.get("color", Color.WHITE)
-	_background.bg_color = Color("#1d2f59") if selected else Color("#141f3d")
-	_background.border_color = Color.WHITE if selected else tint.darkened(0.15)
+	var base_bg: Color = Color("#1a2748") if selected else Color("#101a34")
+	_background.bg_color = base_bg
+	_background.border_color = UiKit.COLOR_ACCENT if selected else tint.darkened(0.25)
 	_background.set_border_width_all(3 if selected else 2)
+	_background.set_corner_radius_all(10)
 	_background.draw(get_canvas_item(), Rect2(Vector2.ZERO, size))
+
+	# Inner highlight for depth.
+	var highlight := Rect2(Vector2(2, 2), size - Vector2(4, 4))
+	draw_rect(highlight, Color(1, 1, 1, 0.04))
+
+	if match_glow and not selected:
+		var pulse: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
+		var glow := StyleBoxFlat.new()
+		glow.bg_color = Color(0, 0, 0, 0)
+		glow.border_color = Color(UiKit.COLOR_ACCENT.r, UiKit.COLOR_ACCENT.g, UiKit.COLOR_ACCENT.b, 0.4 + 0.4 * pulse)
+		glow.set_border_width_all(2)
+		glow.set_corner_radius_all(10)
+		glow.draw(get_canvas_item(), Rect2(Vector2(-3, -3), size + Vector2(6, 6)))
 
 	var icon_rect := Rect2(
 		Vector2(size.x * 0.14, size.y * 0.10),
@@ -86,7 +84,11 @@ func _draw() -> void:
 
 	var font: Font = ThemeDB.fallback_font
 	var badge: String = "T%d" % int(definition.get("tier", 1))
-	draw_string(font, Vector2(7.0, 15.0), badge, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.55, 0.65, 0.9, 0.9))
+	var badge_size := font.get_string_size(badge, HORIZONTAL_ALIGNMENT_LEFT, -1, 11)
+	var badge_rect := Rect2(Vector2(4, 4), badge_size + Vector2(6, 4))
+	draw_rect(badge_rect, Color(0.04, 0.08, 0.19, 0.85))
+	draw_rect(badge_rect, tint.darkened(0.2), false, 1.0)
+	draw_string(font, Vector2(7.0, 15.0), badge, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, tint.lightened(0.4))
 
 
 func _draw_icon(rect: Rect2, shape: String, tint: Color, tier: int) -> void:

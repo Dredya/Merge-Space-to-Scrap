@@ -19,11 +19,20 @@ func _ready() -> void:
 	GameState.credits_changed.connect(_on_credits_changed)
 	GameState.generators_changed.connect(_refresh)
 	GameState.production_changed.connect(_refresh_boost_only)
+	GameState.ad_changed.connect(_refresh_ad_status)
 	_refresh()
+	set_process(true)
 
 
 func on_show() -> void:
 	_refresh()
+
+var _ad_timer: float = 0.0
+func _process(delta: float) -> void:
+	_ad_timer += delta
+	if _ad_timer >= 1.0:
+		_ad_timer = 0.0
+		_refresh_ad_status()
 
 
 func _build() -> void:
@@ -42,8 +51,10 @@ func _build() -> void:
 	var title := UiKit.label("Salvage Upgrades", 20, UiKit.COLOR_TEXT)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
-	_credits_label = UiKit.label(UiKit.credits(GameState.credits), 17, UiKit.COLOR_GOLD)
-	header.add_child(_credits_label)
+	var credits_chip := UiKit.chip(UiKit.credits(GameState.credits), UiKit.COLOR_GOLD)
+	_credits_label = credits_chip.get_child(0) as Label
+	_credits_label.add_theme_font_size_override("font_size", 15)
+	header.add_child(credits_chip)
 	column.add_child(header)
 
 	var scroll := ScrollContainer.new()
@@ -63,7 +74,7 @@ func _build() -> void:
 
 
 func _build_generator_card(definition: Dictionary) -> Control:
-	var card := UiKit.panel(10)
+	var card := UiKit.card(10, UiKit.COLOR_BORDER)
 	var body := UiKit.vbox(4)
 	card.add_child(body)
 
@@ -102,7 +113,7 @@ func _build_generator_card(definition: Dictionary) -> Control:
 
 
 func _build_expansion_card() -> Control:
-	var card := UiKit.panel(10)
+	var card := UiKit.card(10, UiKit.COLOR_ACCENT_DIM)
 	var body := UiKit.vbox(4)
 	card.add_child(body)
 
@@ -120,7 +131,7 @@ func _build_expansion_card() -> Control:
 
 
 func _build_ad_card() -> Control:
-	var card := UiKit.panel(10)
+	var card := UiKit.card(10, UiKit.COLOR_GOLD_DIM)
 	var body := UiKit.vbox(4)
 	card.add_child(body)
 
@@ -181,9 +192,21 @@ func _refresh() -> void:
 		var cost: int = EconomyRules.generator_upgrade_cost(definition, level)
 		button.text = "%s  %s" % ["BUILD" if level <= 0 else "UPGRADE", UiKit.credits(cost)]
 		var met: bool = EconomyRules.generator_requirements_met(definition, levels)
+		var ship_requires: Dictionary = definition.get("ship_requires", {})
+		var ship_met: bool = true
+		var ship_text: String = ""
+		for part_id in ship_requires:
+			if GameState.part_level(str(part_id)) < int(ship_requires[part_id]):
+				ship_met = false
+				var part_name: String = str(Catalog.ship_part_def(str(part_id)).get("name", part_id))
+				ship_text = "Requires %s Lv %d" % [part_name, int(ship_requires[part_id])]
+				break
 		if not met:
 			button.disabled = true
 			requirement.text = "Requires %s" % EconomyRules.generator_requirement_text(definition)
+		elif not ship_met:
+			button.disabled = true
+			requirement.text = ship_text
 		else:
 			button.disabled = GameState.credits < cost
 			requirement.text = "" if GameState.credits >= cost else "Need %s more" % UiKit.credits(cost - GameState.credits)
@@ -220,8 +243,11 @@ func _refresh_ad_status() -> void:
 	if not Monetization.ads_available():
 		_ad_button.disabled = true
 		_ad_button.text = "ADS UNAVAILABLE"
+	elif Monetization.is_busy():
+		_ad_button.disabled = true
+		_ad_button.text = "PLAYING..."
 	else:
-		_ad_button.disabled = Monetization.is_busy()
+		_ad_button.disabled = false
 		_ad_button.text = "WATCH SIMULATED AD"
 
 

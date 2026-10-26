@@ -55,11 +55,11 @@ func _ready() -> void:
 # --- Catalog ----------------------------------------------------------------
 func _test_catalog() -> void:
 	var circuits: Array = Catalog.tier_ids("circuit")
-	_check_eq(circuits.size(), 8, "circuit merge chain has 8 tiers")
+	_check_eq(circuits.size(), 12, "circuit merge chain has 12 tiers")
 	_check_eq(str(circuits[0]), "broken_circuit", "circuit chain starts at Broken Circuit")
-	_check_eq(str(circuits[7]), "warp_drive", "circuit chain ends at Warp Drive Component")
+	_check_eq(str(circuits[11]), "galaxy_engine", "circuit chain ends at Galaxy Engine")
 	_check_eq(str(Catalog.item("broken_circuit")["next_id"]), "repaired_circuit", "tier 1 links to tier 2")
-	_check_eq(str(Catalog.item("warp_drive")["next_id"]), "", "top tier has no next item")
+	_check_eq(str(Catalog.item("galaxy_engine")["next_id"]), "", "top tier has no next item")
 
 	var ids: Dictionary = {}
 	var duplicates: int = 0
@@ -85,15 +85,15 @@ func _test_merge_rules() -> void:
 	_check(MergeRules.can_merge("broken_circuit", "broken_circuit"), "identical tier 1 items can merge")
 	_check(not MergeRules.can_merge("broken_circuit", "repaired_circuit"), "different tiers cannot merge")
 	_check(not MergeRules.can_merge("broken_circuit", "rusted_plate"), "different families cannot merge")
-	_check(not MergeRules.can_merge("warp_drive", "warp_drive"), "top tier items cannot merge")
+	_check(not MergeRules.can_merge("galaxy_engine", "galaxy_engine"), "top tier items cannot merge")
 	_check_eq(MergeRules.merge_target("electronic_module", "electronic_module"), "processing_unit", "merge target is the next tier")
-	_check(str(MergeRules.failure_reason("warp_drive", "warp_drive")).contains("highest"), "max-tier failure explains itself")
+	_check(str(MergeRules.failure_reason("galaxy_engine", "galaxy_engine")).contains("highest"), "max-tier failure explains itself")
 
 
 func _test_new_game() -> void:
 	GameState.new_game()
 	_check_eq(GameState.credits, Catalog.STARTING_CREDITS, "new game starts with the configured credits")
-	_check_eq(GameState.board_size(), 30, "new game board has 5x6 = 30 slots")
+	_check_eq(GameState.board_size(), 10, "new game board has 5x2 = 10 slots")
 	_check_eq(GameState.generator_levels().get("collector", 0), 1, "collector starts at level 1")
 	_check_eq(GameState.generator_levels().get("sorter", 0), 0, "sorter starts unbuilt")
 	_check_eq(GameState.item_count("broken_circuit"), 8, "starter board seeds broken circuits")
@@ -137,8 +137,8 @@ func _test_board_operations() -> void:
 
 	# Highest tier cannot merge.
 	_clear_board()
-	GameState.board[0] = "warp_drive"
-	GameState.board[1] = "warp_drive"
+	GameState.board[0] = "galaxy_engine"
+	GameState.board[1] = "galaxy_engine"
 	var max_tier: Dictionary = GameState.attempt_drop(0, 1)
 	_check(not bool(max_tier.get("ok", false)), "maximum tier items cannot merge")
 	_check_eq(_count_items(), 2, "max-tier failure keeps both items")
@@ -193,14 +193,14 @@ func _test_board_expansion() -> void:
 	GameState.credits = 1000
 	var result: Dictionary = GameState.buy_expansion()
 	_check(bool(result.get("ok", false)), "board expansion can be purchased")
-	_check_eq(GameState.board_size(), 35, "first expansion adds a 7th row")
-	_check_eq(GameState.board_rows, 7, "board rows track the expansion")
-	_check_eq(GameState.credits, 600, "expansion deducts the configured price")
+	_check_eq(GameState.board_size(), 15, "first expansion adds a 3rd row")
+	_check_eq(GameState.board_rows, 3, "board rows track the expansion")
+	_check_eq(GameState.credits, 850, "expansion deducts the configured price")
 
 	GameState.credits = 10
 	var blocked: Dictionary = GameState.buy_expansion()
 	_check(not bool(blocked.get("ok", false)), "expansion is blocked without credits")
-	_check_eq(GameState.board_size(), 35, "blocked expansion does not grow the board")
+	_check_eq(GameState.board_size(), 15, "blocked expansion does not grow the board")
 
 
 func _test_orders() -> void:
