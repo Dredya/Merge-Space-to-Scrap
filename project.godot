@@ -1,0 +1,56 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Scrap to Space"
+config/version="1.0.0"
+config/description="Casual merge-and-build game: salvage scrap, merge components, repair a ship, and explore three destinations."
+run/main_scene="res://scenes/main/main.tscn"
+config/features=PackedStringArray("4.7", "Mobile")
+boot_splash/show_image=false
+boot_splash/bg_color=Color(0.031, 0.055, 0.125, 1)
+config/icon="res://icon.svg"
+
+[autoload]
+
+SaveManager="*res://scripts/autoload/save_manager.gd"
+GameState="*res://scripts/autoload/game_state.gd"
+AudioManager="*res://scripts/autoload/audio_manager.gd"
+Monetization="*res://scripts/autoload/monetization_service.gd"
+
+[display]
+
+window/size/viewport_width=720
+window/size/viewport_height=1280
+window/size/window_width_override=414
+window/size/window_height_override=736
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=1
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/funplay_mcp/plugin.cfg")
+
+[input_devices]
+
+pointing/emulate_mouse_from_touch=true
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
+
+[rendering]
+
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+rendering_device/driver.windows="d3d12"
+environment/defaults/default_clear_color=Color(0.031, 0.055, 0.125, 1)
+textures/vram_compression/import_etc2_astc=true

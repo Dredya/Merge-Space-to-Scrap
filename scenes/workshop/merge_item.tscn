@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/workshop/merge_item.gd" id="1_item"]
+
+[node name="MergeItem" type="Control"]
+clip_contents = true
+script = ExtResource("1_item")

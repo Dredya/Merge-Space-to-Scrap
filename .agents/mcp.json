@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "godot-funplay": {
+      "command": "node",
+      "args": [
+        "C:/path/to/your/godot-mcp-server/index.js"
+      ],
+      "env": {
+        "GODOT_PROJECT_PATH": "E:/AI2026/hello world test"
+      }
+    }
+  }
+}
+```[cite: 5]
