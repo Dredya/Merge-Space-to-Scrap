@@ -58,6 +58,9 @@ var _pending_notice: String = ""
 var _auto_deliver_cooldown: float = 0.0
 var _scrap_spawn_timer: float = 10.0
 var _scrap_spawn_interval: float = 10.0
+var _auto_collect_blocked: bool = false
+var rebirth_level: int = 0
+var lifetime_credits_earned: int = 0
 
 
 func _ready() -> void:
@@ -120,9 +123,9 @@ func _load_or_start() -> void:
 
 func new_game() -> void:
 	_suppress_save = true
-	credits = Catalog.STARTING_CREDITS
-	board_rows = Catalog.BOARD_START_ROWS
-	expansions_bought = 0
+	credits = int(round(float(Catalog.STARTING_CREDITS) * (1.0 + 0.5 * float(rebirth_level))))
+	board_rows = clampi(Catalog.BOARD_START_ROWS + rebirth_level, Catalog.BOARD_START_ROWS, Catalog.MAX_BOARD_ROWS)
+	expansions_bought = board_rows - Catalog.BOARD_START_ROWS
 	selected_index = -1
 	boost_until = 0.0
 	_scrap_spawn_timer = _scrap_spawn_interval
@@ -201,6 +204,8 @@ func to_save_dict() -> Dictionary:
 		"stats": stats.duplicate(true),
 		"boost_until": boost_until,
 		"next_rewarded_ad_unix": next_rewarded_ad_unix,
+		"rebirth_level": rebirth_level,
+		"lifetime_credits_earned": lifetime_credits_earned,
 		"saved_at": Time.get_unix_time_from_system(),
 	}
 
@@ -238,7 +243,7 @@ func apply_save_dict(data: Dictionary) -> void:
 		var default_level: int = 1 if generator_id == "collector" else 0
 		var level: int = clampi(int(saved.get("level", default_level)), 0, Catalog.MAX_GENERATOR_LEVEL)
 		var reference_level: int = maxi(level, 1)
-		var interval: float = EconomyRules.generator_interval(definition, reference_level)
+		var interval: float = EconomyRules.generator_interval(definition, reference_level) / rebirth_production_multiplier()
 		var capacity: int = EconomyRules.generator_capacity(definition, reference_level)
 		generators[generator_id] = {
 			"level": level,
@@ -301,6 +306,8 @@ func apply_save_dict(data: Dictionary) -> void:
 	)
 	next_rewarded_ad_unix = maxf(0.0, float(data.get("next_rewarded_ad_unix", 0.0)))
 	next_expedition_unix = maxf(0.0, float(data.get("next_expedition_unix", 0.0)))
+	rebirth_level = clampi(int(data.get("rebirth_level", 0)), 0, Catalog.rebirth_count())
+	lifetime_credits_earned = maxi(int(data.get("lifetime_credits_earned", 0)), 0)
 
 	unlocked_planets = compute_unlocked_planets()
 
@@ -390,7 +397,7 @@ func get_production_snapshot() -> Array:
 			"level": level,
 			"pending": int(state.get("pending", 0)),
 			"capacity": EconomyRules.generator_capacity(definition, maxi(level, 1)),
-			"interval": EconomyRules.generator_interval(definition, maxi(level, 1)),
+			"interval": EconomyRules.generator_interval(definition, maxi(level, 1)) / rebirth_production_multiplier(),
 			"rate": EconomyRules.generator_rate_per_minute(definition, level, multiplier),
 			"unlocked": level > 0,
 		})
@@ -402,6 +409,11 @@ func _tick_scrap_spawn(delta: float) -> void:
 	if saver == null or not saver.autosave_enabled:
 		return
 	if free_slot_count() <= 0:
+		_scrap_spawn_timer = _scrap_spawn_interval
+		return
+	# After a merge frees a slot, do not let the random scrap timer instantly
+	# refill it; wait until the player has made real room.
+	if _auto_collect_blocked and free_slot_count() < 2:
 		_scrap_spawn_timer = _scrap_spawn_interval
 		return
 	_scrap_spawn_timer -= delta
@@ -434,6 +446,13 @@ func _auto_collect() -> void:
 	var saver := _save_manager()
 	if saver == null or not saver.autosave_enabled:
 		return
+	# After a merge frees a slot, keep that slot free until the player has made
+	# real room (2+ free slots) or explicitly collects.
+	if _auto_collect_blocked:
+		if free_slot_count() >= 2:
+			_auto_collect_blocked = false
+		else:
+			return
 	var collected: int = 0
 	for definition in Catalog.GENERATOR_DEFS:
 		var generator_id: String = str(definition["id"])
@@ -459,6 +478,7 @@ func _auto_collect() -> void:
 
 
 func collect_production() -> Dictionary:
+	_auto_collect_blocked = false
 	var collected: int = 0
 	var blocked: int = 0
 	for definition in Catalog.GENERATOR_DEFS:
@@ -503,7 +523,7 @@ func _tick_production(delta: float) -> bool:
 		if free_slot_count() <= 0:
 			state["progress"] = 0.0
 			continue
-		var interval: float = EconomyRules.generator_interval(definition, level)
+		var interval: float = EconomyRules.generator_interval(definition, level) / rebirth_production_multiplier()
 		var capacity: int = EconomyRules.generator_capacity(definition, level)
 		var pending: int = int(state.get("pending", 0))
 		if pending >= capacity:
@@ -532,7 +552,7 @@ func _apply_offline(elapsed_seconds: float) -> int:
 		var level: int = int(state.get("level", 0))
 		if level <= 0:
 			continue
-		var interval: float = EconomyRules.generator_interval(definition, level)
+		var interval: float = EconomyRules.generator_interval(definition, level) / rebirth_production_multiplier()
 		var capacity: int = EconomyRules.generator_capacity(definition, level)
 		var total: float = float(state.get("progress", 0.0)) + elapsed_seconds
 		var cycles: int = int(floor(total / interval))
@@ -623,6 +643,9 @@ func attempt_drop(from_index: int, to_index: int) -> Dictionary:
 	stats["merges"] = int(stats["merges"]) + 1
 	stats["best_tier"] = maxi(int(stats["best_tier"]), Catalog.item_tier(merged_into))
 	advance_tutorial("merge")
+	# Keep the slot freed by this merge free instead of letting auto-collection
+	# instantly refill it.
+	_auto_collect_blocked = true
 	board_changed.emit()
 	queue_save()
 	return {"ok": true, "action": "merge", "index": to_index, "merged_into": merged_into}
@@ -635,7 +658,7 @@ func sell_selected() -> Dictionary:
 	if item_id == null:
 		return {"ok": false, "message": "Select an item first."}
 
-	var value: int = Catalog.sell_value(str(item_id))
+	var value: int = int(round(float(Catalog.sell_value(str(item_id))) * rebirth_sell_multiplier()))
 	board[selected_index] = null
 	selected_index = -1
 	_add_credits(value)
@@ -659,12 +682,55 @@ func _spawn_item(item_id: String) -> bool:
 	return false
 
 
+func rebirth_production_multiplier() -> float:
+	return 1.0 + 0.08 * float(rebirth_level)
+
+
+func rebirth_sell_multiplier() -> float:
+	return 1.0 + 0.10 * float(rebirth_level)
+
+
+func rebirth_expedition_multiplier() -> float:
+	return 1.0 + 0.10 * float(rebirth_level)
+
+
+func can_rebirth() -> bool:
+	if rebirth_level >= Catalog.rebirth_count():
+		return false
+	var definition: Dictionary = Catalog.next_rebirth_def(rebirth_level)
+	if definition.is_empty():
+		return false
+	return int(stats.get("credits_earned", 0)) >= int(definition.get("credits_required", 0))
+
+
+func rebirth() -> Dictionary:
+	if not can_rebirth():
+		var definition: Dictionary = Catalog.next_rebirth_def(rebirth_level)
+		return {"ok": false, "message": "Need %d more credits earned." % maxi(int(definition.get("credits_required", 0)) - int(stats.get("credits_earned", 0)), 0)}
+	var definition: Dictionary = Catalog.next_rebirth_def(rebirth_level)
+	rebirth_level += 1
+	# Reset the run while preserving permanent rebirth progress.
+	var kept_settings: Dictionary = settings.duplicate(true)
+	var kept_rebirth: int = rebirth_level
+	var kept_lifetime: int = lifetime_credits_earned
+	new_game()
+	rebirth_level = kept_rebirth
+	lifetime_credits_earned = kept_lifetime
+	settings = kept_settings
+	_apply_audio_settings()
+	settings_changed.emit()
+	push_notice("Rebirth %d complete. Bonuses applied." % rebirth_level, "good")
+	queue_save()
+	return {"ok": true, "level": rebirth_level, "name": str(definition.get("name", ""))}
+
+
 func _add_credits(amount: int) -> void:
 	if amount == 0:
 		return
 	credits = maxi(credits + amount, 0)
 	if amount > 0:
 		stats["credits_earned"] = int(stats["credits_earned"]) + amount
+		lifetime_credits_earned += amount
 	credits_changed.emit(credits)
 
 
@@ -677,7 +743,7 @@ func add_items(items: Dictionary) -> Dictionary:
 			if _spawn_item(str(item_id)):
 				added += 1
 			else:
-				overflow_value += int(ceil(float(Catalog.sell_value(str(item_id)) * 0.5)))
+				overflow_value += int(ceil(float(Catalog.sell_value(str(item_id)) * 0.5) * rebirth_sell_multiplier()))
 	if overflow_value > 0:
 		_add_credits(overflow_value)
 	if added > 0:
@@ -1059,7 +1125,7 @@ func claim_expedition() -> Dictionary:
 	var items: Dictionary = rewards.get("items", {})
 	var planet_name: String = str(expedition.get("planet_name", "Unknown"))
 
-	_add_credits(credits_reward)
+	_add_credits(int(round(float(credits_reward) * rebirth_expedition_multiplier())))
 	var delivery: Dictionary = add_items(items)
 	stats["expeditions"] = int(stats["expeditions"]) + 1
 	expedition = {}

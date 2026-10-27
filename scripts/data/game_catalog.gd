@@ -7,7 +7,7 @@ extends RefCounted
 ## bottom of the file, so new items / chains / destinations can be added without
 ## touching merge logic.
 
-const SAVE_VERSION := 1
+const SAVE_VERSION := 2
 
 # --- Economy / board tuning -------------------------------------------------
 const STARTING_CREDITS := 100
@@ -278,6 +278,22 @@ const PLANET_DEFS := [
 
 const STARTER_PLANET := "junkyard"
 
+# --- Rebirth (prestige) -----------------------------------------------------
+# Ten escalating rebirth tiers. Each requires a fresh run to earn the listed
+# total credits; completing one resets the run but grants permanent bonuses.
+const REBIRTH_DEFS := [
+	{"tier": 1, "name": "Rebirth I",   "credits_required": 2000,     "bonus": {"production": 0.08, "sell": 0.10, "expedition": 0.10, "starting_credits": 50,  "board_rows": 1}},
+	{"tier": 2, "name": "Rebirth II",  "credits_required": 6000,     "bonus": {"production": 0.08, "sell": 0.10, "expedition": 0.10, "starting_credits": 100, "board_rows": 1}},
+	{"tier": 3, "name": "Rebirth III", "credits_required": 15000,    "bonus": {"production": 0.08, "sell": 0.10, "expedition": 0.10, "starting_credits": 150, "board_rows": 1}},
+	{"tier": 4, "name": "Rebirth IV",  "credits_required": 40000,    "bonus": {"production": 0.08, "sell": 0.10, "expedition": 0.10, "starting_credits": 200, "board_rows": 1}},
+	{"tier": 5, "name": "Rebirth V",   "credits_required": 100000,   "bonus": {"production": 0.08, "sell": 0.10, "expedition": 0.10, "starting_credits": 300, "board_rows": 1}},
+	{"tier": 6, "name": "Rebirth VI",  "credits_required": 250000,   "bonus": {"production": 0.08, "sell": 0.10, "expedition": 0.10, "starting_credits": 400, "board_rows": 1}},
+	{"tier": 7, "name": "Rebirth VII", "credits_required": 600000,   "bonus": {"production": 0.08, "sell": 0.10, "expedition": 0.10, "starting_credits": 500, "board_rows": 1}},
+	{"tier": 8, "name": "Rebirth VIII","credits_required": 1500000,  "bonus": {"production": 0.08, "sell": 0.10, "expedition": 0.10, "starting_credits": 750, "board_rows": 1}},
+	{"tier": 9, "name": "Rebirth IX",  "credits_required": 4000000,  "bonus": {"production": 0.08, "sell": 0.10, "expedition": 0.10, "starting_credits": 1000,"board_rows": 1}},
+	{"tier": 10,"name": "Rebirth X",   "credits_required": 10000000, "bonus": {"production": 0.08, "sell": 0.10, "expedition": 0.10, "starting_credits": 1500,"board_rows": 1}},
+]
+
 # --- Tutorial ---------------------------------------------------------------
 const TUTORIAL_STEPS := [
 	{"id": "collect", "text": "Tap COLLECT to pull scrap out of your machines."},
@@ -388,3 +404,22 @@ static func planet(planet_id: String) -> Dictionary:
 		if str(definition["id"]) == planet_id:
 			return definition
 	return {}
+
+
+static func rebirth_count() -> int:
+	return REBIRTH_DEFS.size()
+
+
+static func rebirth_def(tier: int) -> Dictionary:
+	# tier is 1-based rebirth number
+	for definition in REBIRTH_DEFS:
+		if int(definition.get("tier", 0)) == tier:
+			return definition
+	return {}
+
+
+static func next_rebirth_def(current_level: int) -> Dictionary:
+	var next_tier: int = current_level + 1
+	if next_tier < 1 or next_tier > REBIRTH_DEFS.size():
+		return {}
+	return rebirth_def(next_tier)

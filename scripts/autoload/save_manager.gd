@@ -5,7 +5,7 @@ extends Node
 ## `write_save()` and asks for one back with `load_save()`. Failed or outdated
 ## saves are moved aside (never deleted) so a broken file cannot wipe progress.
 
-const SAVE_VERSION := 1
+const SAVE_VERSION := 2
 const MAIN_SAVE_PATH := "user://scrap_to_space_save.json"
 
 var save_path: String = MAIN_SAVE_PATH

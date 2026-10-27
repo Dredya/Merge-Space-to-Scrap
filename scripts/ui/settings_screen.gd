@@ -4,6 +4,7 @@ extends Control
 signal closed
 
 const UiKit = preload("res://scripts/ui/ui_kit.gd")
+const Catalog = preload("res://scripts/data/game_catalog.gd")
 
 var _music_slider: HSlider
 var _sfx_slider: HSlider
@@ -11,6 +12,9 @@ var _haptics_toggle: CheckButton
 var _auto_deliver_toggle_ref: CheckButton
 var _version_label: Label
 var _reset_dialog: ConfirmationDialog
+var _rebirth_button: Button
+var _rebirth_label: Label
+var _rebirth_dialog: ConfirmationDialog
 
 
 func _ready() -> void:
@@ -102,6 +106,13 @@ func _build() -> void:
 	reset_button.pressed.connect(_on_reset_pressed)
 	body.add_child(reset_button)
 
+	_rebirth_label = UiKit.label("", 12, UiKit.COLOR_MUTED, true)
+	body.add_child(_rebirth_label)
+
+	_rebirth_button = UiKit.button("REBIRTH", 14)
+	_rebirth_button.pressed.connect(_on_rebirth_pressed)
+	body.add_child(_rebirth_button)
+
 	_version_label = UiKit.label("", 11, UiKit.COLOR_MUTED)
 	body.add_child(_version_label)
 
@@ -112,6 +123,14 @@ func _build() -> void:
 	_reset_dialog.cancel_button_text = "CANCEL"
 	_reset_dialog.confirmed.connect(_on_reset_confirmed)
 	add_child(_reset_dialog)
+
+	_rebirth_dialog = ConfirmationDialog.new()
+	_rebirth_dialog.title = "Rebirth"
+	_rebirth_dialog.dialog_text = "Reset this run for permanent bonuses? Your current progress will be lost."
+	_rebirth_dialog.ok_button_text = "REBIRTH"
+	_rebirth_dialog.cancel_button_text = "CANCEL"
+	_rebirth_dialog.confirmed.connect(_on_rebirth_confirmed)
+	add_child(_rebirth_dialog)
 
 
 func _make_slider() -> HSlider:
@@ -135,6 +154,20 @@ func _sync() -> void:
 	var version: String = str(ProjectSettings.get_setting("application/config/version", "1.0.0"))
 	_version_label.text = "Scrap to Space v%s - offline build" % version
 
+	if _rebirth_label != null:
+		if GameState.rebirth_level >= Catalog.rebirth_count():
+			_rebirth_label.text = "Rebirth: MAX (tier %d)" % GameState.rebirth_level
+			_rebirth_button.disabled = true
+		else:
+			var def: Dictionary = Catalog.next_rebirth_def(GameState.rebirth_level)
+			var required: int = int(def.get("credits_required", 0))
+			var earned: int = int(GameState.stats.get("credits_earned", 0))
+			_rebirth_label.text = "Rebirth %d/%d - %s: %d/%d credits earned" % [
+				GameState.rebirth_level, Catalog.rebirth_count(),
+				str(def.get("name", "")), earned, required
+			]
+			_rebirth_button.disabled = not GameState.can_rebirth()
+
 
 func _on_save_pressed() -> void:
 	if GameState.save_now(true):
@@ -150,4 +183,25 @@ func _on_reset_pressed() -> void:
 func _on_reset_confirmed() -> void:
 	GameState.reset_progress()
 	GameState.push_notice("Progress reset. Welcome back to the junkyard.", "info")
+	closed.emit()
+
+
+func _on_rebirth_pressed() -> void:
+	if not GameState.can_rebirth():
+		var def: Dictionary = Catalog.next_rebirth_def(GameState.rebirth_level)
+		GameState.push_notice("Need %d more credits earned for %s." % [
+			maxi(int(def.get("credits_required", 0)) - int(GameState.stats.get("credits_earned", 0)), 0),
+			str(def.get("name", "next rebirth"))
+		], "warn")
+		return
+	_rebirth_dialog.popup_centered()
+
+
+func _on_rebirth_confirmed() -> void:
+	var result: Dictionary = GameState.rebirth()
+	if bool(result.get("ok", false)):
+		GameState.push_notice("Rebirth complete: %s" % str(result.get("name", "")), "good")
+	else:
+		GameState.push_notice(str(result.get("message", "Rebirth failed.")), "warn")
+	_sync()
 	closed.emit()
