@@ -107,6 +107,7 @@ adb logcat -s godot
 - [ ] An expedition launched before closing the app is claimable on return.
 - [ ] Audio respects the volume sliders and mute.
 - [ ] Touch targets are comfortable on a real device (the headless test enforces ≥44 px).
+- [ ] Privacy policy URL set in Play Console (see docs/privacy-policy.md → https://dredya.github.io/Merge-Space-to-Scrap/privacy-policy.html).
 
 Device-specific behaviour (safe areas, actual haptics, background/foreground handling and
 real frame timing) remains **unverified** until this checklist is run on hardware.

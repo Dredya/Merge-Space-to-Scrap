@@ -144,6 +144,16 @@ limitations.
   "not available" instead of pretending a transaction happened.
 - The game is fully playable with monetization disabled.
 
+## Privacy & Terms (hosted)
+
+Published for store listings (Google Play requires a public privacy policy URL):
+
+- Privacy Policy: https://dredya.github.io/Merge-Space-to-Scrap/privacy-policy.html
+- Terms & Conditions: https://dredya.github.io/Merge-Space-to-Scrap/terms.html
+
+Source files: [docs/privacy-policy.md](docs/privacy-policy.md), [docs/terms.md](docs/terms.md).
+Enable GitHub Pages once: repo **Settings → Pages → Source: main branch /docs folder**.
+
 ## License / third-party assets
 
 All code in this project is original. `addons/funplay_mcp` is a third-party editor
